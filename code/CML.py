@@ -35,6 +35,38 @@ def cml_simulation(matrix_flow: np.ndarray, matrix_distance: np.ndarray, node_li
         result_dict[node] = result_list
     return result_dict
 
+def cml_simulation_robustness(matrix_flow: np.ndarray, matrix_distance: np.ndarray, node_list: list, miu: tuple, k_neibor_num: int, r: float, alpha: float, ccc: float):
+    result_dict = {}
+    c, cl = 1, len(node_list)
+    for node in node_list:
+        print('当前总进度：' + str(ccc) + '%      ' + '当前进度：' + str(round(c/cl * 100, 5)) + str('%'))
+        c += 1
+        result_list = []
+        matrix_f, matrix_d = copy.deepcopy(matrix_flow), copy.deepcopy(matrix_distance)
+        node_state_dict = func_init_node_state(matrix_f, node_list, alpha)
+        node_state_dict[node] += r
+        pause_set_0 = set()
+        fail_nodes_index_list = [node_list.index(node)]
+        eq = True
+        while eq:
+            pause_set_1 = copy.deepcopy(pause_set_0)
+            node_state_dict = func_renew_node_state(matrix_f, node_state_dict, node_list, miu)
+            matrix_f = func_flow_assignment_robustness(matrix_f, matrix_d, fail_nodes_index_list, k_neibor_num)
+            matrix_d = func_distance_renew(matrix_d, fail_nodes_index_list)
+            for i in fail_nodes_index_list:
+                pause_set_0.add(node_list[i])
+            for i in fail_nodes_index_list:
+                node_state_dict[node_list[i]] = 0
+            for i in node_state_dict.keys():
+                if node_state_dict[i] >= 1:
+                    fail_nodes_index_list.append(node_list.index(i))
+            if len(pause_set_0) == len(pause_set_1):
+                eq = False
+        for k in list(set(fail_nodes_index_list)):
+            result_list.append(node_list[k])
+        result_dict[node] = result_list
+    return result_dict
+
 def cml_simulation_enhance(matrix_flow: np.ndarray, matrix_distance: np.ndarray, node_list: list, miu: tuple, k_neibor_num: int, r: float, alpha: float, ccc: float, enhance_nodes_list: list):
     result_dict = {}
     c, cl = 1, len(node_list)
@@ -104,6 +136,27 @@ def func_flow_assignment(matrix_flow: np.ndarray, matrix_distance: np.ndarray, f
         result_arr[:, i] = result_arr[:, i] * 0
     return result_arr
 
+def func_flow_assignment_robustness(matrix_flow: np.ndarray, matrix_distance: np.ndarray, fail_nodes_index_list: list, k_neibor_num: int):
+    result_arr = copy.deepcopy(matrix_flow)
+    for i in fail_nodes_index_list:
+        neibor_flow_in, neibor_flow_out = np.array([]), np.array([])
+        neibor_list = func_k_neibor_robustness(matrix_distance, i, k_neibor_num)
+        # print(neibor_list)
+        for j in neibor_list:
+            neibor_flow_in = np.append(neibor_flow_in, np.sum(result_arr[:, j]))
+            neibor_flow_out = np.append(neibor_flow_out, np.sum(result_arr[j, :]))
+        neibor_flow_in = neibor_flow_in/(np.sum(neibor_flow_in) + 0.0000001)
+        neibor_flow_out = neibor_flow_out/(np.sum(neibor_flow_out) + 0.0000001)
+        for j in range(len(result_arr)):
+            ass_flow_in = result_arr[j, i] * neibor_flow_in
+            ass_flow_out = result_arr[i, j] * neibor_flow_out
+            for k in range(len(neibor_list)):
+                result_arr[j, neibor_list[k]] += ass_flow_in[k]
+                result_arr[neibor_list[k], j] += ass_flow_out[k]
+        result_arr[i, :] = result_arr[i, :] * 0
+        result_arr[:, i] = result_arr[:, i] * 0
+    return result_arr
+
 def func_distance_renew(matrix_distance: np.ndarray, fail_nodes_index_list: list):
     result_arr = copy.deepcopy(matrix_distance)
     max_num = np.max(result_arr) + 1
@@ -134,4 +187,12 @@ def func_k_neibor(matrix_distance: np.ndarray, node_index: int, k_neibor_num: in
     result_list = []
     dis_list = list(matrix_distance[node_index, :])
     result_list = list(map(dis_list.index, heapq.nsmallest(k_neibor_num, dis_list)))
+    return result_list
+
+def func_k_neibor_robustness(matrix_distance: np.ndarray, node_index: int, k_neibor_num: int):
+    result_list = []
+    dis_list = list(matrix_distance[node_index, :])
+    indexed_dis = [(val, idx) for idx, val in enumerate(dis_list)]
+    smallest = heapq.nsmallest(k_neibor_num, indexed_dis, key=lambda x: x[0])
+    result_list = [idx for (val, idx) in smallest]
     return result_list
